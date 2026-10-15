@@ -29,3 +29,22 @@ def create_access_token(user_id: int) -> str:
     # The JWT standard says "sub" must be a string
     payload = {"sub": str(user_id), "exp": expire}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=JWT_ALGORITHM)
+
+
+def decode_access_token(token: str) -> int:
+    """Return the user id from a valid token.
+
+    Raises jwt.InvalidTokenError if the signature is wrong, the token has
+    expired, it wasn't signed with HS256, or "sub" is missing or not an id.
+    """
+    payload = jwt.decode(
+        token,
+        settings.jwt_secret_key,
+        # Only accept HS256, so a token can't pick a weaker algorithm (e.g. "none")
+        algorithms=[JWT_ALGORITHM],
+        options={"require": ["exp", "sub"]},
+    )
+    try:
+        return int(payload["sub"])
+    except ValueError:
+        raise jwt.InvalidTokenError("sub is not a user id")

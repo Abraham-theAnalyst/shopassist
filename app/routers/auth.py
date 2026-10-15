@@ -9,7 +9,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.dependencies import get_db
+from app.dependencies import get_current_user, get_db
 from app.models import User
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.user import UserResponse
@@ -48,3 +48,8 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, INVALID_CREDENTIALS)
 
     return TokenResponse(access_token=create_access_token(user.id))
+
+
+@router.get("/me", response_model=UserResponse)
+def me(current_user: User = Depends(get_current_user)):
+    return current_user
