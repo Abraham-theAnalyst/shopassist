@@ -1,9 +1,26 @@
 services:
   api:
-    build: .
+    build:
+      context: .
+      target: production
     env_file: .env
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Runs the test suite: docker compose run --rm --build tests
+  # The "test" profile keeps it from starting with a plain "docker compose up".
+  tests:
+    build:
+      context: .
+      target: test
+    profiles: ["test"]
+    env_file: .env
+    environment:
+      # Blank the real key, so even a bug in the tests can't reach OpenRouter
+      OPENROUTER_API_KEY: ""
     depends_on:
       db:
         condition: service_healthy
