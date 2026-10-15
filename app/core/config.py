@@ -5,7 +5,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # Read from environment variables first, then from a .env file if present.
     # extra="ignore" skips variables we don't use here (e.g. POSTGRES_PASSWORD).
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # hide_input_in_errors keeps values (which include secrets) out of the
+    # error message when a setting is missing or invalid.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     database_url: str
     jwt_secret_key: str

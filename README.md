@@ -1,6 +1,12 @@
 # ShopAssist
 
-ShopAssist is the backend for an online store's customer support chatbot. Customers create an account, log in, open a conversation and ask questions about orders, shipping, returns, payments and products. An AI assistant replies, and every conversation is saved in PostgreSQL. It is built for small online stores that want an AI support assistant they can run themselves, and it is designed so the AI provider can be swapped without touching the rest of the code. This repository is the first milestone: a working, tested REST API that runs locally with Docker Compose.
+ShopAssist is the backend for an online store's customer support chatbot. Customers create an account, log in, open a conversation and ask questions about orders, shipping, returns, payments and products. An AI assistant replies, and every conversation is saved in PostgreSQL. It is built for small online stores that want an AI support assistant they can run themselves, and it is designed so the AI provider can be swapped without touching the rest of the code. This repository is the first milestone: a working, tested REST API that runs locally with Docker Compose and is deployed on Render.
+
+**Live demo:** [shopassist-022b.onrender.com/docs](https://shopassist-022b.onrender.com/docs)
+
+The demo runs on free hosting that goes to sleep after 15 minutes without traffic, so the first request can take about a minute while it wakes up. AI replies come from a free model with a shared daily limit, so the assistant may occasionally answer with a `502` "unavailable" message.
+
+To try it, register with **POST /auth/register**, log in with **POST /auth/login** and copy the `access_token`, then click **Authorize** and paste the token. Create a conversation with **POST /conversations** and send a message to it with **POST /conversations/{conversation_id}/messages**.
 
 ## Features
 
@@ -17,13 +23,13 @@ ShopAssist is the backend for an online store's customer support chatbot. Custom
 
 ## Roadmap
 
-These are planned for later milestones and are **not** built yet:
+Only the checked item is done. The others are planned for later milestones and are **not** built yet.
 
-- **Knowledge base:** answer questions from the store's own policies, FAQs and product information
-- **Admin dashboard:** let store staff review conversations
-- **File uploads:** let customers attach files such as photos of a damaged item
-- **Chat interface:** a web frontend for customers (today the API is used through Swagger UI or any HTTP client)
-- **Deployment:** a public instance. The app is prepared for Render and Neon (see [Deployment](#deployment)) but is not live yet.
+- [x] **Deployment:** live on Render with a Neon PostgreSQL database (see [Deployment](#deployment))
+- [ ] **Knowledge base:** answer questions from the store's own policies, FAQs and product information
+- [ ] **Admin dashboard:** let store staff review conversations
+- [ ] **File uploads:** let customers attach files such as photos of a damaged item
+- [ ] **Chat interface:** a web frontend for customers (today the API is used through Swagger UI or any HTTP client)
 
 ## Tech stack
 
@@ -269,12 +275,13 @@ Not needed in production:
 - **Cold starts.** A free Render service goes to sleep after 15 minutes without requests. The next request wakes it up, which takes about a minute, so the first call after a quiet period is slow. Requests are fast again once it's awake.
 - **Idle database.** Neon's free tier also pauses the database when it's idle and resumes it on the next query, which adds a short delay. Connections that Neon closed while idle are detected and replaced automatically (SQLAlchemy's `pool_pre_ping`), so they don't cause errors.
 
-A live link will be added here once the app is deployed.
+The live instance is at [shopassist-022b.onrender.com/docs](https://shopassist-022b.onrender.com/docs).
 
 ## API endpoints
 
 | Method | Path | Auth | Description | Responses |
 |---|---|---|---|---|
+| GET | `/` | No | Redirects to `/docs` (not listed in Swagger) | `307` |
 | GET | `/health` | No | Health check | `200` |
 | POST | `/auth/register` | No | Create an account. Body: `email`, `password` | `201` user, `400` email taken, `422` invalid input |
 | POST | `/auth/login` | No | Log in. Body: `email`, `password` | `200` access token, `401` wrong email or password |

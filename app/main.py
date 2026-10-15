@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.routers import auth, conversations
 
@@ -25,6 +25,12 @@ def validation_error_handler(request: Request, exc: RequestValidationError):
 
 app.include_router(auth.router)
 app.include_router(conversations.router)
+
+
+# Visiting the base URL opens the Swagger page. Hidden from the docs themselves.
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/health")
