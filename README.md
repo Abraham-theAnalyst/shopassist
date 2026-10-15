@@ -23,7 +23,7 @@ These are planned for later milestones and are **not** built yet:
 - **Admin dashboard:** let store staff review conversations
 - **File uploads:** let customers attach files such as photos of a damaged item
 - **Chat interface:** a web frontend for customers (today the API is used through Swagger UI or any HTTP client)
-- **Deployment:** hosting the API somewhere public
+- **Deployment:** a public instance. The app is prepared for Render and Neon (see [Deployment](#deployment)) but is not live yet.
 
 ## Tech stack
 
@@ -101,7 +101,7 @@ tests/               Pytest suite
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/Abraham-theAnalyst/shopassist.git
+git clone https://github.com/Techy-Pabs/shopassist.git
 cd shopassist
 ```
 
@@ -156,7 +156,7 @@ Start the API and the database in the background:
 docker compose up -d --build
 ```
 
-Apply the database migrations. Run this on first setup and whenever a new migration is added:
+The API container applies any pending database migrations each time it starts, then starts the server. If a migration fails, the container stops instead of running against a half-updated database. You can also apply migrations by hand:
 
 ```bash
 docker compose exec api alembic upgrade head
@@ -208,6 +208,68 @@ The tests:
 - cover registration, login, token checks, `/auth/me`, conversation ownership, sending messages, the 20-message history limit, AI failures and input validation
 
 Test tools (`requirements-dev.txt`) are only installed in the test image, not in the image the API runs from.
+
+## Deployment
+
+ShopAssist is set up to run on [Render](https://render.com) (the API, as a Docker web service) with [Neon](https://neon.tech) (the PostgreSQL database). Both have free tiers. Docker Compose is only used for local development; in production the API runs on its own and connects to Neon over the internet.
+
+### How the production container starts
+
+The default build target in the `Dockerfile` is the production image. When it starts, it runs `scripts/start.sh`, which:
+
+1. applies database migrations with `alembic upgrade head`, and stops the container if they fail
+2. starts uvicorn on `0.0.0.0`, on the port in the `PORT` environment variable (Render sets this automatically; it defaults to `8000` locally)
+
+Running migrations on startup means no separate migration step is needed, which matters because Render's free tier has no pre-deploy command or shell access.
+
+### 1. Create the database on Neon
+
+1. Create a Neon project. PostgreSQL 16 matches the local setup.
+2. Open **Connect** on the project dashboard and copy the connection string. Turn off connection pooling first, so you get the direct connection (the host name won't contain `-pooler`). Neon recommends direct connections for running migrations, and this app runs them on every start.
+
+The string looks like this:
+
+```
+postgresql://USER:PASSWORD@ep-example-123456.REGION.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+```
+
+Use it exactly as Neon gives it. The app switches `postgresql://` to the `psycopg` driver automatically and keeps `sslmode=require` and `channel_binding=require`, so the connection is encrypted.
+
+### 2. Create the web service on Render
+
+1. In Render, choose **New**, then **Web Service**, and connect the GitHub repository.
+2. Set the language to **Docker**. Render finds the `Dockerfile` in the project root and builds the production image.
+3. Choose the **Free** instance type.
+4. Under **Advanced**, set the health check path to `/health`.
+5. Add the environment variables below, then create the service.
+
+The tables are created on the first start, when the container runs the migrations. After that, every push to the connected branch triggers a new build and deploy.
+
+### Production environment variables
+
+| Variable | Required | What to set |
+|---|---|---|
+| `DATABASE_URL` | Yes | The Neon connection string from step 1, unchanged |
+| `JWT_SECRET_KEY` | Yes | A new long random value. Don't reuse your local one. |
+| `AI_MODEL` | Yes | `openrouter/free`, or another OpenRouter model |
+| `OPENROUTER_API_KEY` | Yes | Your OpenRouter key |
+| `JWT_EXPIRE_MINUTES` | No | Defaults to `30` |
+| `STORE_NAME` | No | Defaults to `ShopAssist` |
+| `AI_PROVIDER` | No | Defaults to `openrouter` |
+| `AI_BASE_URL` | No | Defaults to `https://openrouter.ai/api/v1` |
+| `AI_TIMEOUT_SECONDS` | No | Defaults to `30` |
+| `AI_MAX_TOKENS` | No | Defaults to `500` |
+
+Not needed in production:
+- `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` only configure the local database container.
+- `PORT` is set by Render.
+
+### Free tier behaviour
+
+- **Cold starts.** A free Render service goes to sleep after 15 minutes without requests. The next request wakes it up, which takes about a minute, so the first call after a quiet period is slow. Requests are fast again once it's awake.
+- **Idle database.** Neon's free tier also pauses the database when it's idle and resumes it on the next query, which adds a short delay. Connections that Neon closed while idle are detected and replaced automatically (SQLAlchemy's `pool_pre_ping`), so they don't cause errors.
+
+A live link will be added here once the app is deployed.
 
 ## API endpoints
 

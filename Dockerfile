@@ -29,6 +29,10 @@ CMD ["pytest"]
 # --- production: what the api service runs (no test tools or tests) ---
 FROM base AS production
 
+COPY scripts/start.sh ./scripts/start.sh
+
+# Documents the default port; the real one comes from $PORT (see start.sh)
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Runs migrations, then starts uvicorn
+CMD ["sh", "scripts/start.sh"]
