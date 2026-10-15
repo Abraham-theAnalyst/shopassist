@@ -8,7 +8,8 @@ conversations and messages are saved in PostgreSQL. Runs locally with Docker Com
 ## In scope
 - User registration and login with JWT
 - Protected conversation and chat endpoints
-- AI replies from the Anthropic API, acting as a support assistant for a store
+- AI replies from OpenRouter (currently the free model router, openrouter/free),
+  acting as a support assistant for a store
 - Conversations and messages stored in PostgreSQL
 - Docker Compose setup (API + database)
 - Pytest tests and a short README
@@ -22,14 +23,17 @@ streaming replies, deployment.
 - PostgreSQL 16, SQLAlchemy 2.0, Alembic for migrations
 - Password hashing: a well-maintained library (pwdlib with Argon2, or bcrypt)
 - JWT: PyJWT
-- AI: official anthropic Python SDK
+- AI: OpenRouter, called through the openai Python library as an
+  OpenAI-compatible client, behind a provider-agnostic AI layer so another
+  provider (such as Anthropic) can be added without changing the endpoints
 - Config: pydantic-settings reading from a .env file
 - Tests: Pytest with FastAPI's TestClient
 
 ## Configuration (.env)
 DATABASE_URL, JWT_SECRET_KEY, JWT_EXPIRE_MINUTES (default 30),
-ANTHROPIC_API_KEY, ANTHROPIC_MODEL (use a Haiku model in development to
-control cost), STORE_NAME.
+AI_PROVIDER (default "openrouter"), AI_MODEL (e.g. openrouter/free),
+AI_BASE_URL (https://openrouter.ai/api/v1), OPENROUTER_API_KEY,
+AI_TIMEOUT_SECONDS (default 30), AI_MAX_TOKENS (default 500), STORE_NAME.
 - .env must be in .gitignore and never committed.
 - Commit a .env.example with placeholder values.
 
@@ -89,7 +93,7 @@ app/
   models/      user.py, conversation.py, message.py
   schemas/     Pydantic request and response models
   routers/     auth.py, conversations.py
-  services/    ai.py (all Anthropic calls live here)
+  services/    ai.py (all AI provider calls live here)
   dependencies.py   get_db, get_current_user
 alembic/
 tests/

@@ -1,9 +1,16 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.routers import auth, conversations
+
+# Show INFO logs from our own modules (e.g. which AI model answered)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s: %(message)s")
+# httpx (used by the openai library) would otherwise log every request it makes
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 app = FastAPI(title="ShopAssist")
 

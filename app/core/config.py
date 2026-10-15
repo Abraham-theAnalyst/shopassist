@@ -10,5 +10,16 @@ class Settings(BaseSettings):
     jwt_secret_key: str
     jwt_expire_minutes: int = 30
 
+    store_name: str = "ShopAssist"
+
+    ai_provider: str = "openrouter"
+    ai_model: str
+    ai_base_url: str = "https://openrouter.ai/api/v1"
+    # Optional here so the app (and tests) can start without it;
+    # the AI service fails cleanly if it's missing when a reply is needed.
+    openrouter_api_key: str | None = None
+    ai_timeout_seconds: float = 30
+    ai_max_tokens: int = 500
+
 
 settings = Settings()
