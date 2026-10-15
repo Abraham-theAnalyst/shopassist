@@ -3,7 +3,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.routers import auth
+from app.routers import auth, conversations
 
 app = FastAPI(title="ShopAssist")
 
@@ -17,6 +17,7 @@ def validation_error_handler(request: Request, exc: RequestValidationError):
 
 
 app.include_router(auth.router)
+app.include_router(conversations.router)
 
 
 @app.get("/health")
