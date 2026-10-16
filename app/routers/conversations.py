@@ -1,8 +1,5 @@
-import logging
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db, get_user_conversation
@@ -11,9 +8,7 @@ from app.schemas.conversation import ConversationCreate, ConversationResponse
 from app.schemas.message import MessageCreate, MessageResponse
 from app.services.ai import AIServiceError, generate_reply
 from app.services.prompts import build_system_prompt
-from app.services.retrieval import RetrievedChunk, build_search_text, retrieve
-
-logger = logging.getLogger(__name__)
+from app.services.retrieval import build_search_text, find_store_information
 
 # How many recent messages are sent to the AI as context
 HISTORY_LIMIT = 20
@@ -88,17 +83,10 @@ def send_message(
     ).all()
     history = [{"role": m.role, "content": m.content} for m in reversed(recent)]
 
-    # Find relevant store information. If that fails, still reply without it:
-    # the prompt then tells the AI to point the customer to support.
+    # Find relevant store information. If the search fails, the reply still
+    # goes ahead, with only the always included documents (e.g. contact details).
     search_text = build_search_text([m["content"] for m in history if m["role"] == "user"])
-    store_information: list[RetrievedChunk] = []
-    try:
-        store_information = retrieve(db, search_text)
-    except AIServiceError:
-        logger.warning("Knowledge base search skipped: embedding failed")
-    except SQLAlchemyError as exc:
-        db.rollback()
-        logger.warning("Knowledge base search skipped: database error (%s)", type(exc).__name__)
+    store_information = find_store_information(db, search_text)
 
     try:
         reply = generate_reply(build_system_prompt(store_information), history)

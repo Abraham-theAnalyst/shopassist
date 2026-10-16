@@ -119,3 +119,64 @@ def test_cannot_send_message_to_another_users_conversation(client, db, auth_head
     assert response.status_code == 404
     assert saved_messages(db, conversation_id) == []
     assert fake_ai.calls == []
+
+
+def test_reply_uses_retrieved_store_information(client, auth_headers, fake_ai, add_document, monkeypatch):
+    from app.services import ai
+    from tests.conftest import vector
+
+    add_document("returns.md", [("Returns > Window\n\n14 days from delivery.", vector(d0=1.0))])
+    add_document("contact.md", [("Contact > Email\n\nsupport@example.test", vector(d5=1.0))])
+    monkeypatch.setitem(ai._EMBEDDING_PROVIDERS, "openrouter", lambda texts, mode: [vector(d0=1.0) for _ in texts])
+    headers = auth_headers()
+    conversation_id = client.post("/conversations", headers=headers).json()["id"]
+
+    response = client.post(
+        f"/conversations/{conversation_id}/messages", json={"content": "Return window?"}, headers=headers
+    )
+
+    assert response.status_code == 201
+    prompt = fake_ai.calls[0]["system_prompt"]
+    store_information = prompt.split("<store_information>")[1].split("</store_information>")[0]
+    assert "14 days from delivery." in store_information
+    assert "support@example.test" in store_information  # always included
+
+
+def test_search_text_includes_the_previous_customer_message(client, auth_headers, add_document, monkeypatch):
+    from app.services import ai
+    from tests.conftest import vector
+
+    searched = []
+
+    def fake_embed(texts, mode):
+        searched.extend(texts)
+        return [vector(d0=1.0) for _ in texts]
+
+    monkeypatch.setitem(ai._EMBEDDING_PROVIDERS, "openrouter", fake_embed)
+    headers = auth_headers()
+    conversation_id = client.post("/conversations", headers=headers).json()["id"]
+    url = f"/conversations/{conversation_id}/messages"
+
+    client.post(url, json={"content": "How long is delivery to Abuja?"}, headers=headers)
+    client.post(url, json={"content": "And how much?"}, headers=headers)
+
+    assert searched[-1] == "How long is delivery to Abuja?\nAnd how much?"
+
+
+def test_chat_still_replies_when_embedding_fails(client, db, auth_headers, fake_ai, add_document):
+    from tests.conftest import vector
+
+    # conftest makes every embedding call fail, like an outage
+    add_document("contact.md", [("Contact > Email\n\nsupport@example.test", vector(d5=1.0))])
+    headers = auth_headers()
+    conversation_id = client.post("/conversations", headers=headers).json()["id"]
+
+    response = client.post(
+        f"/conversations/{conversation_id}/messages", json={"content": "Hello?"}, headers=headers
+    )
+
+    assert response.status_code == 201
+    assert response.json()["content"] == fake_ai.reply
+    assert [m.role for m in saved_messages(db, conversation_id)] == ["user", "assistant"]
+    # The support contact details still reach the AI
+    assert "support@example.test" in fake_ai.calls[0]["system_prompt"]

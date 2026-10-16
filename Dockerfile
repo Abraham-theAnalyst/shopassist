@@ -15,6 +15,7 @@ COPY alembic.ini .
 COPY alembic ./alembic
 COPY app ./app
 COPY knowledge ./knowledge
+COPY quality ./quality
 
 # --- test: base plus test tools and the tests (used by the "tests" service) ---
 FROM base AS test

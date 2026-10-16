@@ -32,8 +32,16 @@ class Settings(BaseSettings):
     # Knowledge base retrieval: at most this many chunks per question...
     rag_top_k: int = 4
     # ...and only those at least this similar (cosine similarity, -1 to 1).
-    # Starting value; tuned with the retrieval quality check.
-    rag_min_similarity: float = 0.35
+    # Tuned with the retrieval quality check (python -m app.cli.quality retrieval):
+    # relevant documents scored 0.415 or more, uncovered questions 0.194 or less.
+    rag_min_similarity: float = 0.30
+    # Documents always added to the store information, by file name without
+    # ".md", comma separated. "contact" means customers always get support details.
+    rag_always_include: str = "contact"
+
+    @property
+    def rag_always_include_list(self) -> list[str]:
+        return [name.strip() for name in self.rag_always_include.split(",") if name.strip()]
 
     @field_validator("database_url")
     @classmethod

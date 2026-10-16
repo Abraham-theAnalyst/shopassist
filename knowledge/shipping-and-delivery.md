@@ -6,7 +6,7 @@ Delivery within Lagos takes 1 to 2 business days and costs ₦3,500.
 
 ## Delivery to other Nigerian states
 
-Delivery to other states in Nigeria takes 3 to 5 business days and costs ₦6,000.
+Delivery to other states in Nigeria, such as Abuja, Port Harcourt, and Kano, takes 3 to 5 business days and costs ₦6,000.
 
 ## Free delivery
 

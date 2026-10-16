@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.db.base import Base
 from app.dependencies import get_db
 from app.main import app
+from app.models import Chunk, Document
 from app.routers import conversations
 from app.services import ai
 from app.services.ai import AIServiceError
@@ -145,3 +146,33 @@ def auth_headers(client, register):
         return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
     return _auth_headers
+
+
+def vector(**weights) -> list[float]:
+    """A fake embedding with the given values at the given positions, e.g.
+    vector(d0=1.0, d1=0.5). Every other number is 0. Cosine similarity
+    between such vectors is easy to work out by hand.
+    """
+    values = [0.0] * settings.embedding_dimensions
+    for key, weight in weights.items():
+        values[int(key.removeprefix("d"))] = weight
+    return values
+
+
+@pytest.fixture
+def add_document(db):
+    """add_document(source, [(content, vector), ...]) -> saves a knowledge document and its chunks."""
+
+    def _add_document(source, chunks, model=None):
+        document = Document(source=source, title=source.removesuffix(".md"), content_hash="x" * 64)
+        db.add(document)
+        db.flush()
+        for index, (content, embedding) in enumerate(chunks):
+            db.add(Chunk(
+                document_id=document.id, chunk_index=index, content=content,
+                embedding=embedding, embedding_model=model or settings.embedding_model,
+            ))
+        db.commit()
+        return document
+
+    return _add_document
