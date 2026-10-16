@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     ai_timeout_seconds: float = 30
     ai_max_tokens: int = 500
 
+    embedding_model: str = "nvidia/nemotron-3-embed-1b:free"
+    # Must match the size of the chunks.embedding column, which is fixed
+    # by the migration. Changing it also needs a new migration.
+    embedding_dimensions: int = 2048
+
     @field_validator("database_url")
     @classmethod
     def use_psycopg_driver(cls, url: str) -> str:

@@ -26,7 +26,8 @@ services:
         condition: service_healthy
 
   db:
-    image: postgres:16
+    # PostgreSQL 16 with the pgvector extension installed (see docker/db/Dockerfile)
+    build: docker/db
     env_file: .env
     ports:
       - "5432:5432"

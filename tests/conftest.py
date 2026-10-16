@@ -43,6 +43,10 @@ def engine():
     """Create the test database and its tables once per test run."""
     _create_test_database_if_missing()
     engine = create_engine(TEST_DATABASE_URL)
+    # The chunks table uses pgvector's halfvec type, so the extension must
+    # exist before the tables are created
+    with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     yield engine
@@ -53,7 +57,9 @@ def engine():
 def session_factory(engine):
     """Empty every table before each test, so each test starts clean."""
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE users, conversations, messages RESTART IDENTITY CASCADE"))
+        conn.execute(
+            text("TRUNCATE users, conversations, messages, documents, chunks RESTART IDENTITY CASCADE")
+        )
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
