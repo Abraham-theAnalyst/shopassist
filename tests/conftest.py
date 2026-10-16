@@ -114,6 +114,13 @@ def fake_ai(monkeypatch):
         raise RuntimeError("A test tried to call the real AI provider")
 
     monkeypatch.setitem(ai._PROVIDERS, "openrouter", real_ai_called)
+
+    # Embeddings never reach the network either. Failing like a real outage
+    # means chat runs its "no store information" fallback in these tests.
+    def embedding_unavailable(*args, **kwargs):
+        raise AIServiceError("embeddings are disabled in tests")
+
+    monkeypatch.setitem(ai._EMBEDDING_PROVIDERS, "openrouter", embedding_unavailable)
     return fake
 
 

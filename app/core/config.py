@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # by the migration. Changing it also needs a new migration.
     embedding_dimensions: int = 2048
 
+    # Knowledge base retrieval: at most this many chunks per question...
+    rag_top_k: int = 4
+    # ...and only those at least this similar (cosine similarity, -1 to 1).
+    # Starting value; tuned with the retrieval quality check.
+    rag_min_similarity: float = 0.35
+
     @field_validator("database_url")
     @classmethod
     def use_psycopg_driver(cls, url: str) -> str:
