@@ -1,10 +1,13 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 
+from app.db.checks import check_embedding_dimensions
+from app.db.session import engine
 from app.routers import auth, conversations
 
 # Show INFO logs from our own modules (e.g. which AI model answered)
@@ -12,7 +15,16 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s: %(m
 # httpx (used by the openai library) would otherwise log every request it makes
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-app = FastAPI(title="ShopAssist")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Runs once at startup: warn loudly if the embedding settings and the
+    # database disagree, instead of failing later on the first search
+    check_embedding_dimensions(engine)
+    yield
+
+
+app = FastAPI(title="ShopAssist", lifespan=lifespan)
 
 
 @app.exception_handler(RequestValidationError)

@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY alembic.ini .
 COPY alembic ./alembic
 COPY app ./app
+COPY knowledge ./knowledge
 
 # --- test: base plus test tools and the tests (used by the "tests" service) ---
 FROM base AS test

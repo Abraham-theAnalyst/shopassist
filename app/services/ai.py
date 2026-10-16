@@ -1,13 +1,15 @@
 """The only module that talks to an AI provider.
 
-Endpoints call generate_reply() and never see which provider answered.
-To add a provider (e.g. Anthropic), write a function with the same
-signature as _openrouter_reply and register it in _PROVIDERS.
+Endpoints call generate_reply() and embed_texts() and never see which
+provider answered. To add a provider (e.g. Anthropic), write functions with
+the same signatures as _openrouter_reply / _openrouter_embed and register
+them in _PROVIDERS / _EMBEDDING_PROVIDERS.
 """
 
 import logging
 from collections.abc import Callable
 from functools import lru_cache
+from typing import Literal
 
 import openai
 from openai import OpenAI
@@ -21,7 +23,7 @@ ChatMessage = dict[str, str]
 
 
 class AIServiceError(Exception):
-    """The AI couldn't produce a reply (timeout, rate limit, provider error, empty reply)."""
+    """The AI couldn't produce a result (timeout, rate limit, provider error, empty result)."""
 
 
 @lru_cache
@@ -80,3 +82,72 @@ def generate_reply(system_prompt: str, history: list[ChatMessage]) -> str:
         logger.error("Unknown AI_PROVIDER: %s", settings.ai_provider)
         raise AIServiceError("unknown provider")
     return provider(system_prompt, history)
+
+
+# "document": text stored in the knowledge base. "query": a customer's question.
+EmbeddingMode = Literal["document", "query"]
+
+# Texts per embedding request. Each request counts once against the daily
+# free quota, so batches are large; the knowledge base fits in one.
+EMBEDDING_BATCH_SIZE = 64
+
+# nemotron-3-embed-1b was trained with these prefixes (see its model card).
+# Through an OpenAI-compatible endpoint they must be added to the text.
+_NEMOTRON_PREFIXES: dict[EmbeddingMode, str] = {"query": "query: ", "document": "passage: "}
+
+
+def _openrouter_embed(texts: list[str], mode: EmbeddingMode) -> list[list[float]]:
+    prefix = _NEMOTRON_PREFIXES[mode] if "nemotron" in settings.embedding_model else ""
+    try:
+        response = _openrouter_client().embeddings.create(
+            model=settings.embedding_model,
+            input=[prefix + text for text in texts],
+        )
+    except openai.APIStatusError as exc:
+        logger.warning("Embedding provider returned an error: HTTP %s", exc.status_code)
+        raise AIServiceError("provider error") from exc
+    except openai.OpenAIError as exc:
+        logger.warning("Embedding provider call failed: %s", type(exc).__name__)
+        raise AIServiceError("provider call failed") from exc
+
+    # Results carry their position; sort so they line up with the input texts
+    vectors = [item.embedding for item in sorted(response.data or [], key=lambda d: d.index)]
+    if len(vectors) != len(texts) or any(not v for v in vectors):
+        logger.warning("Embedding provider returned %d vectors for %d texts", len(vectors), len(texts))
+        raise AIServiceError("missing embeddings")
+    if any(len(v) != settings.embedding_dimensions for v in vectors):
+        logger.error(
+            "Embedding size %d does not match EMBEDDING_DIMENSIONS=%d",
+            len(vectors[0]), settings.embedding_dimensions,
+        )
+        raise AIServiceError("wrong embedding size")
+    return vectors
+
+
+_EMBEDDING_PROVIDERS: dict[str, Callable[[list[str], EmbeddingMode], list[list[float]]]] = {
+    "openrouter": _openrouter_embed,
+}
+
+
+def embed_texts(texts: list[str], mode: EmbeddingMode) -> list[list[float]]:
+    """Embed texts with the configured provider, in as few requests as possible.
+
+    Returns one vector per text, in the same order. Raises AIServiceError if
+    any batch fails, so callers never get a partial result.
+    """
+    if not texts:
+        return []
+    provider = _EMBEDDING_PROVIDERS.get(settings.ai_provider)
+    if provider is None:
+        logger.error("Unknown AI_PROVIDER: %s", settings.ai_provider)
+        raise AIServiceError("unknown provider")
+
+    vectors: list[list[float]] = []
+    for start in range(0, len(texts), EMBEDDING_BATCH_SIZE):
+        vectors.extend(provider(texts[start : start + EMBEDDING_BATCH_SIZE], mode))
+    logger.info(
+        "Embedded %d texts (%s) with model=%s in %d request(s)",
+        len(texts), mode, settings.embedding_model,
+        -(-len(texts) // EMBEDDING_BATCH_SIZE),
+    )
+    return vectors

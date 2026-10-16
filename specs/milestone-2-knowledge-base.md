@@ -71,10 +71,20 @@ by a different model, which are incompatible and must be re-embedded.
   daily quota.
 - Query and document embeddings: some embedding models expect questions
   and documents to be marked differently (an input type or a text
-  prefix). In Slice 2, check what nemotron-3-embed-1b expects and what
-  OpenRouter's embeddings API supports, and follow it. Getting this wrong
-  lowers retrieval quality without any error, so the retrieval check
-  must pass before Slice 3 is considered done.
+  prefix). Getting this wrong lowers retrieval quality without any error,
+  so the retrieval check must pass before Slice 3 is considered done.
+- Finding (Slice 2), from NVIDIA's model card for Nemotron-3-Embed-1B
+  (huggingface.co/nvidia/Nemotron-3-Embed-1B-BF16): queries must start
+  with "query: " and documents with "passage: ". The input_type option
+  only exists on NVIDIA's own /v2/embed server; for OpenAI-compatible
+  /v1/embeddings endpoints (which OpenRouter provides) the card says to
+  add the prefixes to the text. OpenRouter lists no extra parameters for
+  this model. embed_texts() therefore takes a mode ("document" or
+  "query") and adds the matching prefix.
+- The card also confirms: 2,048 dimensions, and embeddings are
+  L2-normalized, so cosine similarity and dot product rank the same.
+  The model supports shorter embeddings by keeping the first N numbers
+  and re-normalizing; not used, since halfvec(2048) keeps all of them.
 - Embedding failures raise the same kind of error as reply failures
   (timeouts, rate limits, provider errors, empty results). Message
   content and the API key are never logged.
