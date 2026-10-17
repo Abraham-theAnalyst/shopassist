@@ -2,7 +2,7 @@
 
 ShopAssist is the backend for an online store's customer support chatbot. Customers create an account, log in, open a conversation and ask questions about orders, shipping, returns, payments and products. An AI assistant replies using the store's own information (shipping, returns, payments, sizing and so on), and every conversation is saved in PostgreSQL. It is built for small online stores that want an AI support assistant they can run themselves. The engine is store agnostic: all store knowledge lives in Markdown files, so serving a different store means swapping those files and one setting. The AI provider can also be swapped without touching the rest of the code.
 
-This repository covers the first two milestones: a working, tested REST API (Milestone 1) and a knowledge base that grounds the assistant's answers in the store's information using retrieval augmented generation, or RAG (Milestone 2). It runs locally with Docker Compose and is deployed on Render. The demo store is **Loom & Lane**, a fictional Lagos fashion brand.
+This repository covers the first three milestones: a working, tested REST API (Milestone 1), a knowledge base that grounds the assistant's answers in the store's information using retrieval augmented generation, or RAG (Milestone 2), and an admin role with read only admin endpoints for the store's staff (Milestone 3). It runs locally with Docker Compose and is deployed on Render. The demo store is **Loom & Lane**, a fictional Lagos fashion brand.
 
 **Live demo:** [shopassist-022b.onrender.com/docs](https://shopassist-022b.onrender.com/docs)
 
@@ -22,22 +22,24 @@ To try it, register with **POST /auth/register**, log in with **POST /auth/login
 - The store's contact details are always available to the assistant, so it can point customers to support when it doesn't know
 - If the knowledge base search fails, chat still works and directs the customer to support
 - A provider-agnostic AI layer, currently connected to OpenRouter
+- Two roles, customer and admin. Admins can list users and conversations, read any conversation, see the knowledge base and get totals, through admin only endpoints
 - Clear error responses when the AI is slow, rate limited or unavailable
 - Database migrations with Alembic
 - Interactive API documentation (Swagger UI) at `/docs`
-- An automated test suite (58 tests) that uses its own database, a fake AI and fake embeddings, so it never touches real data or makes real AI calls
+- An automated test suite (105 tests) that uses its own database, a fake AI and fake embeddings, so it never touches real data or makes real AI calls
 - A quality check for the knowledge base: retrieval and answer checks against a list of test questions
 
 ## Roadmap
 
-Only the checked items are done. The others are planned for later milestones and are **not** built yet.
+Only the checked items are done. The others are planned and are **not** built yet.
 
 - [x] **Deployment:** live on Render with a Neon PostgreSQL database (see [Deployment](#deployment))
-- [x] **Knowledge base:** answer questions from the store's own policies and information (see [Knowledge base](#knowledge-base))
-- [ ] **Uploading knowledge through the API:** add or update store documents without editing files
-- [ ] **Admin dashboard:** let store staff review conversations
-- [ ] **File uploads:** let customers attach files such as photos of a damaged item
-- [ ] **Chat interface:** a web frontend for customers (today the API is used through Swagger UI or any HTTP client)
+- [x] **Milestone 2, knowledge base:** answer questions from the store's own policies and information (see [Knowledge base](#knowledge-base))
+- [x] **Milestone 3, admin role:** customer and admin roles, and read only admin endpoints (see [Admins](#admins))
+- [ ] **Milestone 4, knowledge uploads:** admins add or update store documents through the API instead of editing files
+- [ ] **Milestone 6, admin dashboard:** a web interface for store staff to review conversations and the knowledge base
+- [ ] **Customer file uploads:** let customers attach files such as photos of a damaged item (not yet scheduled)
+- [ ] **Chat interface:** a web frontend for customers (not yet scheduled; today the API is used through Swagger UI or any HTTP client)
 
 ## Tech stack
 
@@ -81,12 +83,12 @@ app/
   db/                SQLAlchemy base and session, startup checks
   models/            User, Conversation, Message, Document, Chunk
   schemas/           Pydantic request and response models
-  routers/           auth.py, conversations.py
+  routers/           auth.py, conversations.py, admin.py
   services/          ai.py (all AI provider calls: replies and embeddings),
                      prompts.py (system prompt), chunking.py, ingestion.py,
                      retrieval.py
-  cli/               ingest.py and quality.py (command line tools)
-  dependencies.py    get_db, get_current_user, get_user_conversation
+  cli/               ingest.py, quality.py and users.py (command line tools)
+  dependencies.py    get_db, get_current_user, require_admin, get_user_conversation
 alembic/             database migrations
 knowledge/           the store's knowledge base, one Markdown file per topic
 quality/             questions.json, the knowledge base quality check
@@ -103,6 +105,8 @@ tests/               Pytest suite
 
 **JWT verification.** Tokens are signed with HS256, and only HS256 is accepted when verifying, so a token can't switch to a weaker algorithm or to `none`. Every token must contain an expiry (`exp`) and a user id (`sub`). After the signature and expiry are checked, the user is loaded from the database, so a token for a deleted user stops working. Every failure (missing token, bad signature, expired token, deleted user) returns the same `401` with a `WWW-Authenticate: Bearer` header.
 
+**Roles checked on every request.** Each user is a `customer` or an `admin`, enforced by a database constraint. The role is not stored in the login token: `require_admin` reads it from the database on every request, so promoting or demoting someone takes effect on their next request, and a demoted admin's token stops working for admin endpoints at once. Registration always creates a customer and ignores any role sent with it. A missing or invalid token gets `401`; a valid customer token on an admin endpoint gets `403 Admin access required`.
+
 **Ownership checks.** One shared dependency, `get_user_conversation`, looks up a conversation by its id and the current user's id in a single query. A conversation that doesn't exist and one that belongs to someone else both return the same `404`, so users can't discover other users' conversation ids.
 
 **Passwords never echoed or logged.** API responses use explicit schemas, so the password hash is never returned. FastAPI's default validation error normally repeats the invalid input back to the client; ShopAssist removes that value, so a rejected password isn't sent back. The app never logs passwords, hashes, message content, the JWT secret or the API key.
@@ -112,6 +116,8 @@ tests/               Pytest suite
 **AI failure handling.** Timeouts, connection errors, rate limits, provider errors and empty replies all return `502` with a friendly message, and no assistant message is saved. The user's message is kept, so the conversation history stays accurate. Automatic retries are turned off so a failing request doesn't multiply the wait time or use up the free tier's daily limit. The logs record which model answered, or the type of error, but never the conversation text.
 
 **Store information is reference data, not instructions.** Retrieved chunks go into the system prompt inside clearly marked `<store_information>` tags. The prompt tells the assistant to answer store facts (prices, times, policies) only from that section, to treat it as reference data and never as instructions, never to reveal its instructions or mention how it works, and never to invent discounts, orders or policies. The knowledge files are written by the store owner and trusted; this needs revisiting when documents can be uploaded.
+
+**Admin request logging.** Every admin request logs one line with the admin's user id, the method and the path. Never request bodies, message content or customer data.
 
 **Knowledge base logging.** The logs record which chunks were retrieved and their similarity scores (chunk titles only), and how many texts were embedded. They never record what the customer wrote.
 
@@ -249,7 +255,9 @@ The tests:
 - cover registration, login, token checks, `/auth/me`, conversation ownership, sending messages, the 20-message history limit, AI failures and input validation
 - cover the knowledge base: chunking, ingestion (skipping unchanged files, re-embedding changed ones, removing deleted ones, retrying after a failed embedding), retrieval order and threshold, the always included contact document, the prompt's store information section, follow up search text, and chat still replying when embedding fails
 
-There are 58 tests.
+- cover the admin role: `401` and `403` on every admin endpoint, admins getting `200`, registration ignoring a role, promoting and demoting taking effect without a new token, pagination limits, no password hashes in admin responses, and the promote and demote command
+
+There are 105 tests.
 
 Test tools (`requirements-dev.txt`) are only installed in the test image, not in the image the API runs from.
 
@@ -302,7 +310,7 @@ Latest results:
 - **Retrieval:** for all 14 questions the store information covers, the expected document ranked first.
 - **Threshold:** relevant documents scored 0.415 or more, and the best match for an uncovered question scored 0.194. `RAG_MIN_SIMILARITY` is set to 0.30, roughly midway, to leave room for wording the check doesn't cover.
 - **Answers:** 5 of 5 passed (delivery to Abuja, a follow up about cost, the pay on delivery limit, laptops, and the injection attempt, which was refused).
-- **Tests:** 58 automated tests pass.
+- **Tests:** 58 automated tests passed at the end of Milestone 2 (105 now, with the admin tests).
 
 The answer check matches text, so it's a guide; reading the replies is still worthwhile.
 
@@ -310,6 +318,71 @@ The answer check matches text, so it's a guide; reading the replies is still wor
 
 - **Privacy.** Free OpenRouter models may keep requests and use them for training. Customer messages are sent to both the embedding model and the chat model. That is acceptable for a demo, but a real store should switch to paid models with suitable data terms.
 - **Quota.** Free models allow about 50 requests a day. Each customer message uses two (one embedding, one reply), so that is roughly 25 messages a day. Ingestion uses one request per run only when files changed. There is no rate limiting, so one visitor could use up the day's quota.
+
+## Admins
+
+### Roles
+
+Every user is a `customer` (the default) or an `admin` (the store owner and staff). `GET /auth/me` shows your role. Admins can still chat like any customer; they can also use the admin endpoints below. Customers can never reach them.
+
+### Admin endpoints
+
+All are read only and need an admin's token.
+
+| Method | Path | What it returns |
+|---|---|---|
+| GET | `/admin/users` | Users (id, email, role, created_at), newest first |
+| GET | `/admin/conversations` | All conversations, newest first, with the owner's email and message count. Optional `user_id` filter (an unknown id returns an empty list). |
+| GET | `/admin/conversations/{conversation_id}/messages` | Any conversation's messages, oldest first. `404` if it doesn't exist. |
+| GET | `/admin/knowledge/documents` | Knowledge documents with chunk count, the embedding model(s) used, and a `stale` flag when they don't match `EMBEDDING_MODEL` |
+| GET | `/admin/stats` | Totals for users, conversations, messages, documents and chunks |
+
+Lists are paginated with `limit` (default 20, at most 100; more is rejected with `422`) and `offset`, and return:
+
+```json
+{"items": [...], "total": 42, "limit": 20, "offset": 0}
+```
+
+**Privacy:** admins can read customers' conversations. That is expected for a store's support team, and customers should be told so in the store's privacy policy. Password hashes are never returned by any endpoint, admin or not.
+
+### Making someone an admin
+
+There is no admin sign up. The person registers a normal account first, then it is promoted with a command. The command only changes existing accounts, never creates them, and shows which database it is connected to and asks for confirmation before changing anything.
+
+Locally:
+
+```bash
+docker compose exec api python -m app.cli.users promote owner@example.com
+docker compose exec api python -m app.cli.users demote owner@example.com
+```
+
+Add `--yes` to skip the confirmation. Demoting the last admin is allowed, with a warning.
+
+**Known limitation:** there is no email verification yet, so anyone could register with any email address. Register your own account before promoting it, and check the email in the confirmation prompt.
+
+### Promoting an admin on the live database (Neon)
+
+Render's free tier has no shell, so the command runs on your own machine against Neon. The Neon connection string contains the database password, so it must not end up in a file, and that includes your shell history: typed into a command, it would be saved there. Instead, read it into a variable without displaying it, and pass the variable through:
+
+```bash
+# 1. Make sure your local image has the latest code
+docker compose build api
+
+# 2. Paste the Neon connection string when the cursor waits, then press Enter.
+#    Nothing is shown, and the string is not saved in your history.
+read -rs NEON_URL
+
+# 3. Run the command against Neon. "-e DATABASE_URL" with no value copies the
+#    variable from your shell, so the connection string never appears in the
+#    command line either.
+DATABASE_URL="$NEON_URL" docker compose run --rm --no-deps -e DATABASE_URL api \
+    python -m app.cli.users promote owner@example.com
+
+# 4. Forget the connection string
+unset NEON_URL
+```
+
+Before changing anything, step 3 prints the database it is connected to, such as `Database: ep-....neon.tech/neondb`. Answer `y` only if that is your Neon host. If the variable is empty (for example, nothing was pasted at step 2), the command stops with an error saying `DATABASE_URL is empty` and nothing changes; run step 2 again.
 
 ## Deployment
 
@@ -387,13 +460,14 @@ The live instance is at [shopassist-022b.onrender.com/docs](https://shopassist-0
 | GET | `/health` | No | Health check | `200` |
 | POST | `/auth/register` | No | Create an account. Body: `email`, `password` | `201` user, `400` email taken, `422` invalid input |
 | POST | `/auth/login` | No | Log in. Body: `email`, `password` | `200` access token, `401` wrong email or password |
-| GET | `/auth/me` | Yes | The logged-in user | `200`, `401` |
+| GET | `/auth/me` | Yes | The logged-in user, including their role | `200`, `401` |
 | POST | `/conversations` | Yes | Start a conversation. Optional body: `title` | `201`, `401` |
 | GET | `/conversations` | Yes | Your conversations, newest first | `200`, `401` |
 | GET | `/conversations/{conversation_id}/messages` | Yes | Messages in a conversation, oldest first | `200`, `401`, `404` |
 | POST | `/conversations/{conversation_id}/messages` | Yes | Send a message and get the AI's reply. Body: `content` (1 to 2000 characters) | `201` reply, `401`, `404`, `422`, `502` AI unavailable |
+| GET | `/admin/...` | Admin | The five admin endpoints, see [Admins](#admins) | `200`, `401`, `403`, `404`, `422` |
 
-"Auth: Yes" means the request needs an `Authorization: Bearer <token>` header. User responses contain only `id`, `email` and `created_at`.
+"Auth: Yes" means the request needs an `Authorization: Bearer <token>` header; "Admin" means that token must belong to an admin. User responses contain only `id`, `email`, `role` and `created_at`.
 
 ## Screenshots and demo
 
@@ -406,6 +480,8 @@ _Coming soon._
 ## Current limitations
 
 - Login tokens can't be revoked before they expire, and there are no refresh tokens yet.
+- There is no email verification, so an account's email address isn't proven to belong to its owner.
+- Admin endpoints are read only, and there is no stored audit log of what admins viewed (only log lines).
 - There is no rate limiting on login or messages.
 - Knowledge base search is by meaning only (no keyword or hybrid search, no reranking), and the assistant can't look up orders.
 - Knowledge is updated by editing files and restarting; there is no upload API yet.

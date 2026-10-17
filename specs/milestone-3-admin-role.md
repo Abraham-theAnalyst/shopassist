@@ -64,9 +64,13 @@ command line would save the password in the history file. The README
 explains this pattern:
 
     read -rs NEON_URL      # paste the Neon connection string; not shown, not saved
-    docker compose run --rm --no-deps -e DATABASE_URL="$NEON_URL" api \
+    DATABASE_URL="$NEON_URL" docker compose run --rm --no-deps -e DATABASE_URL api \
         python -m app.cli.users promote owner@example.com
     unset NEON_URL
+
+("-e DATABASE_URL" with no value copies the variable from the shell, so the
+connection string never appears in the docker command's arguments either.
+Updated in Slice 3, after testing it.)
 
 The command shows the Neon host before asking for confirmation, so it is
 clear which database is about to change.

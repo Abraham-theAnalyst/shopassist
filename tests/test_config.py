@@ -38,3 +38,10 @@ def test_settings_error_does_not_show_secret_values(monkeypatch):
     assert "ai_model" in message  # the error still names the missing setting
     assert secret not in message
     assert "input_value" not in message  # no input values printed at all
+
+
+def test_empty_database_url_is_rejected_clearly():
+    with pytest.raises(ValidationError) as error:
+        Settings(_env_file=None, database_url="  ", jwt_secret_key="test", ai_model="test")
+
+    assert "DATABASE_URL is empty" in str(error.value)

@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def use_psycopg_driver(cls, url: str) -> str:
+        if not url.strip():
+            # e.g. an empty shell variable passed with "-e DATABASE_URL"
+            raise ValueError("DATABASE_URL is empty")
         # Hosts such as Neon give URLs starting with postgresql:// (or postgres://).
         # SQLAlchemy reads that as "use psycopg2", which isn't installed, so switch
         # it to psycopg (version 3). Options such as ?sslmode=require are kept and
