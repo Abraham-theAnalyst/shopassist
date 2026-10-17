@@ -1,7 +1,9 @@
 from collections.abc import Generator
 
 import jwt
-from fastapi import Depends, HTTPException, status
+import logging
+
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,6 +11,9 @@ from sqlalchemy.orm import Session
 from app.core.security import decode_access_token
 from app.db.session import SessionLocal
 from app.models import Conversation, User
+from app.models.user import ROLE_ADMIN
+
+logger = logging.getLogger(__name__)
 
 # Reads "Authorization: Bearer <token>" and adds the Authorize button to /docs.
 # auto_error=False lets us send our own 401 instead of FastAPI's default.
@@ -46,6 +51,21 @@ def get_current_user(
     if user is None:
         raise unauthorized
     return user
+
+
+def require_admin(request: Request, current_user: User = Depends(get_current_user)) -> User:
+    """The current user, but only if they are an admin.
+
+    The role is read from the database on every request (not from the
+    token), so promoting or demoting someone takes effect immediately.
+    """
+    if current_user.role != ROLE_ADMIN:
+        # 403, not 401: they are logged in, just not allowed. No
+        # WWW-Authenticate header, since logging in again won't help.
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin access required")
+    # Who did what, never request bodies or customer data
+    logger.info("Admin request: user_id=%s %s %s", current_user.id, request.method, request.url.path)
+    return current_user
 
 
 def get_user_conversation(
