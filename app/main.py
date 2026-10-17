@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.db.checks import check_embedding_dimensions
 from app.db.session import engine
-from app.routers import auth, conversations
+from app.routers import admin, auth, conversations
 
 # Show INFO logs from our own modules (e.g. which AI model answered)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s: %(message)s")
@@ -37,6 +37,7 @@ def validation_error_handler(request: Request, exc: RequestValidationError):
 
 app.include_router(auth.router)
 app.include_router(conversations.router)
+app.include_router(admin.router)
 
 
 # Visiting the base URL opens the Swagger page. Hidden from the docs themselves.
